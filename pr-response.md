@@ -34,10 +34,37 @@
 
 ## Comment 6 — Rebase
 
-**What conflicted:**
-**How I resolved it:**
-**How I verified no conflict remains:**
+**What conflicted:** `.gitignore` had a minor conflict (main added `.pytest_cache/` that my branch didn't have). More significantly, `models.py` conflicted because main's refactor migrated `Film.id` from an integer to a UUID string, and my `WatchlistEntry.film_id` was still typed as an integer foreign key referencing the old schema.
+
+**How I resolved it:** I merged the `.gitignore` conflict by keeping both entries. For `models.py`, I restored the `WatchlistEntry` model (which had been dropped during the merge) and changed `film_id` from `db.Integer` to `db.String(36)` to match the new UUID-based `Film.id`, consistent with how `CollectionEntry.film_id` was already updated on main.
+
+**How I verified no conflict remains:** Ran `git status` to confirm the rebase completed with no remaining conflict markers, then ran `pytest tests/ -v` to confirm all 6 tests pass with the corrected UUID-typed model.
+
+## AI Usage
+
+I used AI for orientation early on (summarizing `add_to_collection()`'s pattern in `collection_service.py` and `test_collection.py`'s test structure before writing my own watchlist code and tests), and for troubleshooting git/environment issues (fork setup, rebase mechanics, PowerShell command differences). For Comments 4 and 5, I wrote my own position and reasoning first, based on my own view of how I'd want to use a watchlist feature; I did not ask AI to draft the arguments for me.
 
 ## PR Description
 
-<!-- Written at the end — feature overview, design decisions, manual testing steps -->
+### What this feature does
+
+Adds a watchlist to CineLog — films a user wants to watch later, separate from their collection (films already watched). It includes:
+
+- A `WatchlistEntry` model (`user_id`, `film_id`, `date_added`, `public`)
+- `services/watchlist_service.py`: `add_to_watchlist(user_id, film_id)` validates the film exists (`FilmNotFoundError`) and rejects duplicates (`AlreadyInWatchlistError`); `get_watchlist(user_id)` returns the user's films sorted by date added, newest first.
+- REST endpoints under `/watchlist`: `GET /<user_id>` to view a watchlist, `POST /<user_id>/add` to add a film.
+- Tests in `tests/test_watchlist.py` covering the nonexistent-film and duplicate-add cases.
+
+### Design decisions made
+
+- **Default visibility:** watchlist entries default to `public=True` — see Comment 4 for reasoning.
+- **Sort order:** watchlist sorts by date added, newest first — see Comment 5 for reasoning.
+
+### How to test it manually
+
+1. Activate the virtual environment and run `python app.py` (serves at `http://127.0.0.1:5000`).
+2. Seed a user and film via the Python shell or existing seed data, and note their IDs.
+3. `POST /watchlist/<user_id>/add` with `{"film_id": "<uuid>"}` — expect 201.
+4. `GET /watchlist/<user_id>` — expect the film back with `date_added` and `public: true`.
+5. Repeat the same POST — expect an error (duplicate).
+6. Or just run `pytest tests/ -v` — all 6 tests should pass.
